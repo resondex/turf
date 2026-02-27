@@ -1,0 +1,18 @@
+Package: turf
+Title: TURF Analysis
+Version: 0.1.0
+Authors@R:
+    person("Tyler", "Solloway", role = c("aut", "cre"),
+           email = "tyler@resondex.com")
+Description: Total Unduplicated Reach and Frequency (TURF) analysis for
+    survey research. Supports brute force, parallel, and hybrid search
+    strategies for finding optimal item combinations.
+License: MIT + file LICENSE
+URL: https://github.com/resondex/turf
+BugReports: https://github.com/resondex/turf/issues
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
