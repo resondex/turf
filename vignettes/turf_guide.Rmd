@@ -47,7 +47,7 @@ Computes TURF for every n-item combination from a binary (0/1) data frame.
 ### Basic usage
 
 ```{r}
-results <- turf_best_combo(
+turf_bc_results <- turf_best_combo(
   df   = example_data_ice_cream,
   vars = example_data_ice_cream_dictionary$variable,
   n    = 1:5
@@ -94,7 +94,7 @@ Use a column of all 1s for the total sample (e.g., `"Total"`).
 When subgroups are provided, results are returned as a named list by subgroup, where each element contains the tibble(s) for that subgroup.
 
 ```{r}
-results <- turf_best_combo(
+turf_bc_results <- turf_best_combo(
   df        = example_data_ice_cream,
   vars      = example_data_ice_cream_dictionary$variable,
   n         = 1:5,
@@ -110,7 +110,7 @@ results$Gen_Z$n_3
 A data frame with columns `variable` and `label` (e.g., from a data dictionary). When provided, label columns (`label_1`, `label_2`, ...) are interleaved next to each item column in the output.
 
 ```{r}
-results <- turf_best_combo(
+turf_bc_results <- turf_best_combo(
   df     = example_data_ice_cream,
   vars   = example_data_ice_cream_dictionary$variable,
   n      = 3,
@@ -138,7 +138,7 @@ String. Column name in `df` containing respondent weights. When provided, weight
 | `w_freq_avg` | Weighted average frequency |
 
 ```{r}
-results <- turf_best_combo(df, vars, n = 3, weight = "weight")
+turf_bc_results <- turf_best_combo(df, vars, n = 3, weight = "weight")
 ```
 
 #### `parallel`
@@ -231,7 +231,7 @@ Writes TURF results to an interactive macro-enabled Excel workbook (.xlsm) with:
 
 ```{r}
 turf_write(
-  best_combo_results = results,
+  best_combo_results = turf_bc_results,
   raw                = example_data_ice_cream,
   vars               = example_data_ice_cream_dictionary$variable,
   subgroups          = c("Total", "Gen_Z", "Millennials", "Gen_X"),
@@ -341,8 +341,8 @@ The Dashboard sheet includes interactive dropdowns for subgroup, optimize metric
 ```{r}
 library(turf)
 
-# Step 1: Run TURF
-turf_results <- turf_best_combo(
+# Run TURF Best Combo analysis
+turf_bc_results <- turf_best_combo(
   df        = example_data_ice_cream,
   vars      = example_data_ice_cream_dictionary$variable,
   n         = 1:5,
@@ -351,9 +351,9 @@ turf_results <- turf_best_combo(
   weight    = "weight"
 )
 
-# Step 2: Write to Excel
+# Write results to Excel workbook
 turf_write(
-  best_combo_results = turf_results,
+  best_combo_results = turf_bc_results,
   raw                = example_data_ice_cream,
   vars               = example_data_ice_cream_dictionary$variable,
   subgroups          = c("Total", "Gen_Z", "Millennials", "Gen_X"),

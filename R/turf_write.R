@@ -47,7 +47,7 @@
 #'
 #' @examples
 #' \dontrun{
-#' turf_results <- turf_best_combo(
+#' turf_bc_results <- turf_best_combo(
 #'   df        = example_data_ice_cream,
 #'   vars      = example_data_ice_cream_dictionary$variable,
 #'   n         = 1:3,
@@ -57,7 +57,7 @@
 #' )
 #'
 #' turf_write(
-#'   best_combo_results = turf_results,
+#'   best_combo_results = turf_bc_results,
 #'   raw                = example_data_ice_cream,
 #'   vars               = example_data_ice_cream_dictionary$variable,
 #'   subgroups          = c("Total", "Gen_Z", "Millennials", "Gen_X"),
