@@ -1,0 +1,366 @@
+---
+title: "TURF Analysis Guide"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{TURF Analysis Guide}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## What is TURF?
+
+TURF (Total Unduplicated Reach and Frequency) finds the combination of items that reaches the most people. Given a set of binary survey items (e.g., "would you buy this flavor?"), TURF answers: **which N items should we offer to maximize the number of people who select at least one?**
+
+The `turf` package provides two main functions:
+
+- `turf_best_combo()` — runs the analysis
+- `turf_write()` — writes results to an interactive Excel workbook
+
+## Example data
+
+The package includes synthetic ice cream survey data for testing:
+
+```{r}
+library(turf)
+
+# 1000 respondents, 30 ice cream flavors
+head(example_data_ice_cream)
+
+# Variable-to-label mapping
+example_data_ice_cream_dictionary
+```
+
+---
+
+## turf_best_combo()
+
+Computes TURF for every n-item combination from a binary (0/1) data frame.
+
+### Basic usage
+
+```{r}
+results <- turf_best_combo(
+  df   = example_data_ice_cream,
+  vars = example_data_ice_cream_dictionary$variable,
+  n    = 1:5
+)
+```
+
+### Parameters
+
+#### `df` (required)
+
+A data frame containing the binary item columns, and optionally weight and subgroup columns. Each item column should be 0/1 where 1 means the respondent selected that item.
+
+#### `vars` (required)
+
+Character vector of column names in `df` that are the binary items to analyze. Only these columns are evaluated — everything else (weights, subgroups, IDs) is ignored by the engine.
+
+```{r}
+vars <- c("ic_vanilla", "ic_chocolate", "ic_strawberry", "ic_mint_chip")
+```
+
+#### `n`
+
+Integer or integer vector specifying the combination size(s) to evaluate.
+
+- Single value (e.g., `n = 3`): returns a single tibble of all 3-item combos
+- Vector (e.g., `n = 1:5`): returns a named list of tibbles (`$n_1`, `$n_2`, ..., `$n_5`)
+
+Default: `1:5`
+
+```{r}
+# Just 3-item combos
+results_3 <- turf_best_combo(df, vars, n = 3)
+
+# Combos of size 1 through 10
+results_all <- turf_best_combo(df, vars, n = 1:10)
+results_all$n_5  # access the 5-item results
+```
+
+#### `subgroups`
+
+Character vector of column names in `df`. Each should be a binary (0/1) indicator. TURF runs separately on respondents where each column equals 1.
+Use a column of all 1s for the total sample (e.g., `"Total"`).
+
+When subgroups are provided, results are returned as a named list by subgroup, where each element contains the tibble(s) for that subgroup.
+
+```{r}
+results <- turf_best_combo(
+  df        = example_data_ice_cream,
+  vars      = example_data_ice_cream_dictionary$variable,
+  n         = 1:5,
+  subgroups = c("Total", "Gen_Z", "Millennials", "Gen_X")
+)
+
+# Access Gen_Z results for 3-item combos
+results$Gen_Z$n_3
+```
+
+#### `labels`
+
+A data frame with columns `variable` and `label` (e.g., from a data dictionary). When provided, label columns (`label_1`, `label_2`, ...) are interleaved next to each item column in the output.
+
+```{r}
+results <- turf_best_combo(
+  df     = example_data_ice_cream,
+  vars   = example_data_ice_cream_dictionary$variable,
+  n      = 3,
+  labels = example_data_ice_cream_dictionary
+)
+# Output columns: item_1, label_1, item_2, label_2, item_3, label_3, reach_n, ...
+```
+
+The function also accepts:
+
+- A named character vector (names = variable names, values = labels)
+- Column name variations like `var`, `vars`, `lab`, `labs` are auto-detected
+
+#### `weight`
+
+String. Column name in `df` containing respondent weights. When provided, weighted reach and frequency columns are appended alongside the unweighted columns:
+
+| Column | Description |
+|--------|-------------|
+| `reach_n` | Unweighted count reached |
+| `reach_pct` | Unweighted percent reached |
+| `freq_avg` | Unweighted average frequency |
+| `w_reach_n` | Weighted count reached |
+| `w_reach_pct` | Weighted percent reached |
+| `w_freq_avg` | Weighted average frequency |
+
+```{r}
+results <- turf_best_combo(df, vars, n = 3, weight = "weight")
+```
+
+#### `parallel`
+
+Logical. Default `TRUE`. Enables parallel processing via `future`/`furrr` when the combo space is large enough. When subgroups are provided and the combo space is small, subgroups themselves run in parallel.
+
+Requires the `future` and `furrr` packages (listed in Suggests).
+
+#### `max_brute` and `max_parallel`
+
+These thresholds control which search strategy is used:
+
+| Combo count | Strategy |
+|-------------|----------|
+| <= `max_brute` | Brute-force, single core |
+| `max_brute` to `max_parallel` | Parallel brute-force |
+| > `max_parallel` | Hybrid (greedy + random + shortlist) |
+
+Defaults: `max_brute = 150000`, `max_parallel = 150001`
+
+With the defaults, brute-force is used up to 150k combos and hybrid kicks in above that.
+
+#### `n_random`
+
+Integer. Number of random combos to sample in the hybrid strategy. Default `100000`. Larger values improve coverage of the combo space at the cost of runtime.
+
+#### `n_shortlist`
+
+Integer. Number of top items (by individual reach + greedy path) to include in the shortlist brute-force pass of the hybrid strategy. Default `20`.
+
+#### `seed`
+
+Integer. Seed for reproducibility of random sampling in the hybrid strategy. Default `1`.
+
+#### `estimate_time`
+
+Logical. If `TRUE`, runs a quick benchmark and prints an estimated runtime table without actually running the analysis. Returns the estimate invisibly.
+
+```{r}
+turf_best_combo(df, vars, n = 1:10, estimate_time = TRUE)
+#> Benchmark: 12,345 combos/sec (n=5, 1,000 respondents)
+#> # A tibble: 10 x 5
+#>        n   combos strategy est_sec est_min
+#>    <int>    <dbl> <chr>      <dbl>   <dbl>
+#>  1     1       30 brute        0.0     0.0
+#>  2     2      435 brute        0.0     0.0
+#>  ...
+```
+
+### Return value
+
+Each tibble in the output is sorted by reach (descending) and contains:
+
+| Column | Description |
+|--------|-------------|
+| `item_1` ... `item_n` | Variable name for each item in the combo |
+| `label_1` ... `label_n` | (If labels provided) Human-readable label |
+| `reach_n` | Number of respondents reached by this combo |
+| `reach_pct` | Percent of respondents reached |
+| `freq_avg` | Average number of items selected among reached respondents |
+| `w_reach_n` | (If weighted) Weighted count reached |
+| `w_reach_pct` | (If weighted) Weighted percent reached |
+| `w_freq_avg` | (If weighted) Weighted average frequency |
+
+### Search strategies
+
+The function automatically selects the best strategy based on the number of combinations:
+
+**Brute-force** — evaluates every possible combination. Exact results, but only feasible for smaller combo spaces.
+
+**Parallel brute-force** — same as brute-force but distributed across CPU cores via `future`/`furrr`.
+
+**Hybrid** — for very large combo spaces (e.g., 40 items choose 5 = 658k combos), uses three complementary approaches:
+
+1. **Greedy**: stepwise selection of the best item at each step. Near-optimal and fast.
+2. **Shortlist**: takes the union of greedy-path items and top individual-reach items, then brute-forces all combos within that reduced set. Exhaustively covers the most promising region.
+3. **Random**: samples broadly across the full space as a hedge against greedy/shortlist missing an unexpected combo.
+
+---
+
+## turf_write()
+
+Writes TURF results to an interactive macro-enabled Excel workbook (.xlsm) with:
+
+- **Dashboard** sheet: dropdown controls, greedy build chart, item toggle panel
+- **Best Combos** sheet: combo results table with sorting/filtering controls
+- Hidden data sheets for VBA to read from
+
+### Basic usage
+
+```{r}
+turf_write(
+  best_combo_results = results,
+  raw                = example_data_ice_cream,
+  vars               = example_data_ice_cream_dictionary$variable,
+  subgroups          = c("Total", "Gen_Z", "Millennials", "Gen_X"),
+  weight             = "weight",
+  labels             = example_data_ice_cream_dictionary,
+  file_name          = "my_turf_analysis",
+  project_name       = "Ice Cream Study (#1234567)"
+)
+```
+
+### Parameters
+
+#### `best_combo_results`
+
+Output from `turf_best_combo()`. Accepts any of the 4 return shapes:
+
+- Single tibble (one n, no subgroups)
+- Named list by n (`$n_1`, `$n_2`, ...)
+- Named list by subgroup (each containing a tibble)
+- Nested list (subgroup > n)
+
+If `NULL`, the Best Combos sheet is created with dummy controls and hidden. The Dashboard and greedy functionality still work without it.
+
+#### `raw` (required)
+
+The original respondent-level data frame. Must contain the item columns, weight column (if used), and subgroup columns (if used). This is written to a hidden `_raw` sheet so the VBA macros can compute greedy results interactively.
+
+#### `vars` (required)
+
+Character vector. Same item variable names passed to `turf_best_combo()`.
+
+#### `subgroups`
+
+Character vector. Subgroup column names in `raw` (binary 0/1). If `NULL`, a "Total" subgroup is created automatically.
+
+#### `weight`
+
+String. Weight column name in `raw`. If `NULL`, all respondents are equally weighted and the weighted controls are hidden in the workbook.
+
+#### `respondent_id`
+
+String. Column name for respondent IDs. If `NULL`, row numbers are used. Written to the hidden `_raw` sheet.
+
+#### `labels`
+
+Same as `turf_best_combo()` — a data frame with `variable`/`label` columns, or a named character vector.
+
+#### `top`
+
+Integer. Maximum number of combos to write per subgroup x combo size. Default `50000`. Larger values increase file size.
+
+#### `file_name`
+
+String. Output file name without extension. Default `"TURF_Analysis"`. The extension (`.xlsm` or `.xlsx`) is determined automatically based on whether the VBA template is found.
+
+#### `project_name`
+
+String. Displayed in row 3 of the Dashboard and Best Combos sheets. Default `"Project Name - (#xxxxxxx)"`.
+
+#### `where`
+
+String. Output directory. Default `getwd()`.
+
+#### `template`
+
+String. Path to the VBA template `.xlsm` file. By default, the function looks for the bundled template in the `turf` package (`inst/turf_template.xlsm`), then falls back to `turf_template.xlsm` in the working directory.
+
+If the template is found, the output is `.xlsm` with full VBA interactivity. Without it, the output is a static `.xlsx`.
+
+#### `sig_threshold`
+
+Numeric. P-value threshold for green significance coloring in the greedy results. Default `0.10`.
+
+#### `marginal_threshold`
+
+Numeric. P-value threshold for orange marginal significance. Default `0.20`. Values above this threshold are colored red.
+
+#### `very_hidden`
+
+Logical. If `TRUE`, hidden sheets are set to Excel's "veryHidden" state (only accessible via VBA editor). Default `FALSE`.
+
+#### `return_location`
+
+Logical. If `TRUE` (default), returns the file path invisibly.
+
+### Workbook structure
+
+The generated workbook contains:
+
+| Sheet | Visible | Purpose |
+|-------|---------|---------|
+| Dashboard | Yes | Greedy TURF chart, results table, item controls |
+| Best Combos | Yes | Combo results with sorting/filtering |
+| Greedy | Hidden | Greedy results + chart staging data |
+| `_raw` | Hidden | Respondent-level data for VBA computation |
+| `_config` | Hidden | Settings, variable/label mapping, base sizes |
+| `_controls` | Hidden | Dropdown state (single source of truth) |
+| `_best_combo_charts` | Hidden | Chart staging data |
+| `d_s1_2`, `d_s1_3`, ... | Hidden | Combo data per subgroup x combo size |
+
+The Dashboard sheet includes interactive dropdowns for subgroup, optimize metric (Reach/Freq), chart label format, and weighted toggle. The VBA macros read from the hidden sheets and update the visible sheets when dropdown values change.
+
+---
+
+## Full example
+
+```{r}
+library(turf)
+
+# Step 1: Run TURF
+turf_results <- turf_best_combo(
+  df        = example_data_ice_cream,
+  vars      = example_data_ice_cream_dictionary$variable,
+  n         = 1:5,
+  subgroups = c("Total", "Gen_Z", "Millennials", "Gen_X"),
+  labels    = example_data_ice_cream_dictionary,
+  weight    = "weight"
+)
+
+# Step 2: Write to Excel
+turf_write(
+  best_combo_results = turf_results,
+  raw                = example_data_ice_cream,
+  vars               = example_data_ice_cream_dictionary$variable,
+  subgroups          = c("Total", "Gen_Z", "Millennials", "Gen_X"),
+  weight             = "weight",
+  labels             = example_data_ice_cream_dictionary,
+  top                = 1000,
+  file_name          = "example_ice_cream_turf",
+  project_name       = "Ice Cream Study (#1234567)"
+)
+```
